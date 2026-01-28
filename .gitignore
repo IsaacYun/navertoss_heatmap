@@ -1,0 +1,22 @@
+# Virtual Environment
+venv/
+env/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Excel Data (Sensitive)
+*.xlsx
+*.xls
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Brain
+.gemini/
