@@ -1,38 +1,48 @@
-# Toss & Naver Smart Place Sales Analysis Dashboard
+# 토스 포스 & 네이버 스마트플레이스 매출 통합 분석 대시보드
 
-This is a local Streamlit web application that analyzes sales data from Toss POS and Naver Smart Place.
+이 프로젝트는 **토스(Toss) 포스 결제 내역**과 **네이버(Naver) 스마트플레이스 예약 내역**을 통합하여 분석해주는 웹 애플리케이션입니다.
 
-## Features
-- **Secure File Loading**: Supports password-protected Excel files.
-- **Data Merging**: Combines Field sales (Toss) and Reservation sales (Naver).
-- **Interactive Dashboard**:
-    - Total Sales & Platform Breakdown
-    - Daily Sales Trends
-    - **30-Minute Sales Heatmap** (to identify peak hours)
+## 📌 배경 및 목적 (Context)
+매장을 운영하면서 다음과 같은 불편함을 해결하기 위해 제작되었습니다:
+1.  **데이터 파편화**: 홀 매출(토스)과 예약 매출(네이버)이 서로 다른 엑셀 파일로 존재하여 전체 매출 파악이 번거로움.
+2.  **보안 파일 처리**: 매번 비밀번호가 걸린 엑셀 파일을 열어서 수작업으로 데이터를 합치는 과정이 비효율적임.
+3.  **통합 분석 니즈**: 두 플랫폼의 데이터를 합쳐서 **일별 매출 추이**와 **시간대별 피크 타임(히트맵)**을 한눈에 보고 싶음.
 
-## Installation
+## ✨ 주요 기능 (Features)
+-   **보안 엑셀 자동 처리**: 비밀번호가 걸린 엑셀 파일도 비밀번호 입력만으로 즉시 해제 및 분석 가능.
+-   **데이터 통합**: 서로 다른 포맷의 토스/네이버 데이터를 자동으로 표준화하여 합산.
+-   **인터랙티브 대시보드**:
+    -   💳 **플랫폼별 매출 비중**: 현장 결제 vs 예약 결제 비율 확인.
+    -   📈 **일별 매출 추이**: 날짜별 매출 변화를 그래프로 시각화.
+    -   🔥 **시간대별 매출 히트맵**: 요일/시간대별 매출 밀집도를 초록색 단색 히트맵으로 직관적 분석 (투명도 지원).
 
-1.  Open your terminal.
-2.  Navigate to the project folder:
-    ```bash
-    cd toss_naver_analysis
-    ```
-3.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## 🚀 설치 및 실행 방법 (Installation & Run)
 
-## How to Run
+### 1. 환경 설정
+터미널에서 다음 명령어를 차례로 입력하여 프로젝트 폴더로 이동하고 필요한 라이브러리를 설치합니다.
 
-1.  Run the application:
-    ```bash
-    streamlit run app.py
-    ```
-2.  A new tab will open in your browser (usually at `http://localhost:8501`).
-3.  Upload your **Toss Excel File** and **Naver Excel File**.
-4.  Enter the password for the Toss file and your Naver ID for the Naver file.
-5.  Click **Analyze Sales Data**.
+```bash
+cd toss_naver_analysis
+pip install -r requirements.txt
+```
 
-## Troubleshooting
-- **Decryption Failed**: Ensure you entered the correct 4-digit password for Toss and your Naver ID for Naver.
-- **Column Not Found**: The app expects standard Korean column names (e.g., `결제일시`, `결제금액`). If your Excel file layout is different, let me know.
+### 2. 프로그램 실행
+```bash
+streamlit run app.py
+```
+
+### 3. 분석 시작
+1.  브라우저가 열리면(`http://localhost:8501`) **토스**와 **네이버** 엑셀 파일을 각각 업로드합니다.
+2.  각 파일의 **비밀번호**를 입력합니다.
+3.  **[Analyze Sales Data]** 버튼을 클릭하면 분석 결과가 나타납니다.
+
+---
+
+## 🌐 웹 배포 방법 (Deployment)
+이 프로그램을 내 컴퓨터가 아닌, 인터넷 웹 사이트처럼 배포하여 언제 어디서든 접속하고 싶다면 아래 가이드를 참고하세요.
+
+[👉 웹 서비스 배포 가이드 보러가기](deployment.md)
+
+## 🛠 문제 해결 (Troubleshooting)
+-   **Decryption Failed**: 엑셀 파일의 비밀번호가 올바른지 다시 확인해주세요. (토스는 보통 4자리, 네이버는 아이디)
+-   **Data Parsing Error**: 엑셀 양식이 변경되었을 경우 인식이 안 될 수 있습니다. `결제 상세내역` 시트가 포함되어 있는지 확인해주세요.
