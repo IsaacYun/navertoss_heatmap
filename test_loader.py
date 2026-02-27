@@ -5,8 +5,9 @@ import os
 toss_filename = "../매출리포트-260128023045.xlsx"
 naver_filename = "../레드런천안점_예약자관리_20260128_0232.xlsx"
 
-toss_pw = "9999"
-naver_pw = "yunisaac"
+# 환경변수에서 비밀번호 로드 (보안)
+toss_pw = os.environ.get("TEST_TOSS_PW", "")
+naver_pw = os.environ.get("TEST_NAVER_PW", "")
 
 print("--- Testing Data Loader ---")
 

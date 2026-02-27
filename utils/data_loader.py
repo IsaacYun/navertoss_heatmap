@@ -18,7 +18,7 @@ def decrypt_excel(file_buffer, password):
         file_buffer.seek(0)
         try:
             # Try specific check or just let the caller handle fallback
-            raise ValueError(f"Decryption failed. Please check the password. Details: {str(e)}")
+            raise ValueError(f"비밀번호가 올바르지 않습니다. 토스: 4자리 숫자, 네이버: 네이버 아이디를 확인해주세요. (상세: {str(e)})")
         except:
             raise e
 
@@ -172,7 +172,7 @@ def normalize_columns(df, type_):
         
         else:
              found_cols = list(df.columns)
-             raise ValueError(f"Toss File Parsing Error: Found: {found_cols}")
+             raise ValueError(f"토스 파일 형식 오류: '결제 상세내역' 시트가 있는지 확인해주세요. (발견된 컬럼: {found_cols})")
 
     elif type_ == 'naver':
          # Keywords (no spaces)
@@ -202,7 +202,7 @@ def normalize_columns(df, type_):
                  
              return df[['datetime', 'amount']]
          else:
-             raise ValueError(f"Naver File Parsing Error: Could not find Date/Amount columns. Found: {list(df.columns)}")
+             raise ValueError(f"네이버 파일 형식 오류: 날짜/금액 컬럼을 찾을 수 없습니다. (발견된 컬럼: {list(df.columns)})")
 
     return df
 
@@ -227,7 +227,7 @@ def load_toss_data(file, password):
         # header=None is critical to prevent Pandas from picking the 'Summary' row as header
         sheets_dict = pd.read_excel(source_file, sheet_name=None, header=None)
     except Exception as e:
-        raise ValueError("Could not read Toss file. Is the password correct?")
+        raise ValueError("토스 파일을 읽을 수 없습니다. 비밀번호(4자리 숫자)를 확인해주세요.")
 
     # Iterate through sheets to find one with valid headers
     # User requested to ONLY look at '결제 상세내역' if possible
@@ -260,7 +260,7 @@ def load_toss_data(file, password):
     first_df = list(sheets_dict.values())[0]
     preview_str = first_df.head(5).to_string() 
     
-    raise ValueError(f"Could not find valid transaction data (Sheet '{target_sheet}' missing or invalid). \nFirst sheet preview:\n{preview_str}")
+    raise ValueError(f"토스 파일 형식 오류: '{target_sheet}' 시트를 찾을 수 없거나 유효하지 않습니다. 토스 결제 상세내역 파일인지 확인해주세요.")
 
 def load_naver_data(file, password):
     """Loads Naver Smart Place Excel data with decryption."""
@@ -279,7 +279,7 @@ def load_naver_data(file, password):
         # Just try first sheet for Naver for now unless reported otherwise
         df = pd.read_excel(source_file)
     except:
-        raise ValueError("Could not read Naver file. Is the password (ID) correct?")
+        raise ValueError("네이버 파일을 읽을 수 없습니다. 비밀번호(네이버 아이디)를 확인해주세요.")
             
     df = normalize_columns(df, 'naver')
     return df
