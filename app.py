@@ -51,22 +51,33 @@ with st.sidebar:
 
 # ── 버튼 클릭 시 데이터 로드 & session_state에 저장 ────────────────────────
 if analyze_btn:
-    if not toss_file or not naver_file:
-        st.error("토스와 네이버 엑셀 파일을 모두 업로드해주세요.")
-    elif not toss_password or not naver_password:
-        st.error("두 파일의 비밀번호를 모두 입력해주세요.")
+    if not toss_file and not naver_file:
+        st.error("토스와 네이버 엑셀 파일 중 하나는 반드시 업로드해주세요.")
     else:
+        # 하나라도 업로드 되었을 경우 비밀번호 체크
+        if toss_file and not toss_password:
+            st.error("업로드된 토스 파일의 비밀번호를 입력해주세요.")
+            st.stop()
+        if naver_file and not naver_password:
+            st.error("업로드된 네이버 파일의 비밀번호(아이디)를 입력해주세요.")
+            st.stop()
+            
         try:
             with st.spinner("파일 복호화 및 처리 중..."):
-                df_toss = load_toss_data(toss_file, toss_password)
-                df_naver = load_naver_data(naver_file, naver_password)
+                df_toss = load_toss_data(toss_file, toss_password) if toss_file else pd.DataFrame()
+                df_naver = load_naver_data(naver_file, naver_password) if naver_file else pd.DataFrame()
                 df_merged = process_and_merge_data(df_toss, df_naver)
                 
                 # 추가: 아이스크림 품목 등 할인 내역 조회
-                df_discount = load_toss_discount_data(toss_file, toss_password)
+                df_discount = load_toss_discount_data(toss_file, toss_password) if toss_file else pd.DataFrame()
 
             st.session_state['df_merged'] = df_merged
             st.session_state['df_discount'] = df_discount
+            
+            # 하나만 업로드 된 경우 경고 메시지 저장
+            st.session_state['missing_toss'] = not bool(toss_file)
+            st.session_state['missing_naver'] = not bool(naver_file)
+            
             st.success("데이터 처리 완료!")
         except Exception as e:
             st.error(f"오류가 발생했습니다: {str(e)}")
@@ -79,28 +90,49 @@ if 'df_merged' in st.session_state:
     df_discount = st.session_state.get('df_discount', pd.DataFrame())
 
     # 데이터 범위 배너
-    toss_min = df_merged[df_merged['source'] == 'Toss (Field)']['datetime'].min()
-    toss_max = df_merged[df_merged['source'] == 'Toss (Field)']['datetime'].max()
-    naver_min = df_merged[df_merged['source'] == 'Naver (Reservation)']['datetime'].min()
-    naver_max = df_merged[df_merged['source'] == 'Naver (Reservation)']['datetime'].max()
+    toss_min, toss_max = None, None
+    naver_min, naver_max = None, None
+    
+    toss_mask = df_merged['source'] == 'Toss (Field)'
+    naver_mask = df_merged['source'] == 'Naver (Reservation)'
+    
+    if toss_mask.any():
+        toss_min = df_merged[toss_mask]['datetime'].min()
+        toss_max = df_merged[toss_mask]['datetime'].max()
+    
+    if naver_mask.any():
+        naver_min = df_merged[naver_mask]['datetime'].min()
+        naver_max = df_merged[naver_mask]['datetime'].max()
+
+    # 미업로드 파일 경고 최상단 표시
+    if st.session_state.get('missing_toss'):
+        st.error("🚨 **강조 표시:** 토스(현장 결제) 엑셀 파일은 업로드되지 않았습니다.")
+    if st.session_state.get('missing_naver'):
+        st.error("🚨 **강조 표시:** 네이버(예약) 엑셀 파일은 업로드되지 않았습니다.")
 
     info_col1, info_col2 = st.columns(2)
     with info_col1:
-        st.info(
-            f"📱 **토스 데이터 범위**\n\n"
-            f"{toss_min.strftime('%Y-%m-%d')} ~ {toss_max.strftime('%Y-%m-%d')}"
-        )
+        if toss_min and toss_max:
+            st.info(
+                f"📱 **토스 데이터 범위**\n\n"
+                f"{toss_min.strftime('%Y-%m-%d')} ~ {toss_max.strftime('%Y-%m-%d')}"
+            )
+        else:
+            st.info("📱 **토스 데이터 범위**\n\n데이터 없음")
     with info_col2:
-        st.info(
-            f"🌐 **네이버 데이터 범위**\n\n"
-            f"{naver_min.strftime('%Y-%m-%d')} ~ {naver_max.strftime('%Y-%m-%d')}"
-        )
+        if naver_min and naver_max:
+            st.info(
+                f"🌐 **네이버 데이터 범위**\n\n"
+                f"{naver_min.strftime('%Y-%m-%d')} ~ {naver_max.strftime('%Y-%m-%d')}"
+            )
+        else:
+            st.info("🌐 **네이버 데이터 범위**\n\n데이터 없음")
 
     # 조회 기간 필터
     import datetime
     today_str = datetime.date.today().strftime('%Y-%m-%d')
-    overall_min = df_merged['datetime'].min().date()
-    overall_max = df_merged['datetime'].max().date()
+    overall_min = df_merged['datetime'].min().date() if not df_merged.empty else datetime.date.today()
+    overall_max = df_merged['datetime'].max().date() if not df_merged.empty else datetime.date.today()
 
     st.markdown(f"#### 📅 조회 기간 설정 (오늘: **{today_str}**)")
     filter_col1, filter_col2 = st.columns(2)
@@ -138,7 +170,7 @@ if 'df_merged' in st.session_state:
             # 아이스크림 할인 상품 상단 노출
             if not df_discount.empty:
                 st.markdown("### 🍦 아이스크림 상품 할인 내역")
-                st.caption(f"토스 포스 시스템에 '상품할인'이 적용된 아이스크림 카테고리 내역입니다. (총 {len(df_discount)}건)")
+                st.caption(f"토스 포스 시스템에 '상품할인'이 적용된 아이스크림 관련(상품명 기준) 내역입니다. (총 {len(df_discount)}건)")
                 st.dataframe(df_discount, use_container_width=True, hide_index=True)
                 st.markdown("---")
             

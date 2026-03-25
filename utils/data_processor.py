@@ -7,14 +7,23 @@ def process_and_merge_data(df_toss, df_naver):
     Adds features for heatmap: 'day_of_week', 'hour', 'minute_30'
     """
     # 1. Label Sources
-    df_toss = df_toss.copy()
-    df_naver = df_naver.copy()
-    
-    df_toss['source'] = 'Toss (Field)'
-    df_naver['source'] = 'Naver (Reservation)'
+    if not df_toss.empty:
+        df_toss = df_toss.copy()
+        df_toss['source'] = 'Toss (Field)'
+    else:
+        df_toss = pd.DataFrame()
+        
+    if not df_naver.empty:
+        df_naver = df_naver.copy()
+        df_naver['source'] = 'Naver (Reservation)'
+    else:
+        df_naver = pd.DataFrame()
     
     # 2. Merge
     df_merged = pd.concat([df_toss, df_naver], axis=0, ignore_index=True)
+    
+    if df_merged.empty:
+        return df_merged
     
     # 3. Datetime Conversion
     # Attempt to convert mixed formats if necessary
@@ -22,6 +31,9 @@ def process_and_merge_data(df_toss, df_naver):
     
     # Drop rows with invalid dates
     df_merged = df_merged.dropna(subset=['datetime'])
+    
+    if df_merged.empty:
+        return df_merged
     
     # 4. Feature Engineering for Heatmap
     # Day of Week (0=Monday, 6=Sunday) -> Map to names

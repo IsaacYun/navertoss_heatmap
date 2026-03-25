@@ -329,32 +329,46 @@ def load_toss_discount_data(file, password):
          df.columns = [str(c).replace(" ", "").replace("\n", "").strip() for c in new_header]
          df = df.reset_index(drop=True)
          
+         product_col = next((c for c in df.columns if '상품명' in c), None)
          cat_col = next((c for c in df.columns if '카테고리' in c), None)
          disc_amt_col = next((c for c in df.columns if '상품할인금액' in c), None)
          if not disc_amt_col: disc_amt_col = next((c for c in df.columns if '할인금액' in c), None)
          
          disc_reason_col = next((c for c in df.columns if '상품할인' == c), None)
          
-         if cat_col and disc_amt_col:
+         if product_col and disc_amt_col:
               # 숫자 처리: "원", "," 기호 제거 후 형변환
               # 예: "-3,000원", "3,000" -> -3000, 3000
               df[disc_amt_col] = df[disc_amt_col].astype(str).str.replace(r'[원,]', '', regex=True)
               df[disc_amt_col] = pd.to_numeric(df[disc_amt_col], errors='coerce').fillna(0)
               
-              # 할인이 0이 아닌 경우 (마이너스 값으로 적히는 경우도 포함)
-              mask = (df[cat_col].astype(str).str.contains('아이스크림', na=False)) & (df[disc_amt_col] != 0)
+              # 상품명에 '아이스크림' 문자가 포함되어 있고 할인이 0이 아닌 경우
+              mask = (df[product_col].astype(str).str.contains('아이스크림', na=False)) & (df[disc_amt_col] != 0)
               
               res_df = df[mask].copy()
               
-              target_cols = ['결제일자', '결제시간', '결제시각', '영수증번호', cat_col, '상품명', '단가', '수량', disc_reason_col, disc_amt_col]
+              date_targets = ['결제일시', '주문일시', '결제일자', '결제기준일자', '영업일자', '일시', '기간', '결제시간', '결제시각']
+              other_targets = ['주문번호', '영수증번호', cat_col, product_col, '단가', '수량', disc_reason_col, disc_amt_col]
+              target_cols = date_targets + other_targets
+              
               cols_to_keep = []
               for target in target_cols:
                   if target is None: continue
+                  
+                  # Find matching columns for this target
                   for c in res_df.columns:
+                      # If it's a date target, we want to match exact or highly similar
                       if target in c and c not in cols_to_keep:
                           cols_to_keep.append(c)
+                          
+              # Ensure at least datetime is displayed even if names mismatch slightly
+              if not any(d in ','.join(cols_to_keep) for d in ['일자', '일시', '시간', '시각', '기간']):
+                  for c in res_df.columns:
+                      if ('일' in c or '시' in c) and c not in cols_to_keep:
+                          cols_to_keep.insert(0, c)
               
               if cols_to_keep:
+                  cols_to_keep = [col for col in cols_to_keep if col != '주문기준일자']
                   return res_df[cols_to_keep]
               return res_df
               

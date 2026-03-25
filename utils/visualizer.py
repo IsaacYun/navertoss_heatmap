@@ -19,17 +19,38 @@ def create_kpi_metrics(df):
     toss_ratio = (toss_sales / total_sales * 100) if total_sales > 0 else 0
     naver_ratio = (naver_sales / total_sales * 100) if total_sales > 0 else 0
 
-    # 1행: 매출 관련 KPI
-    col1, col2, col3 = st.columns(3)
-    col1.metric("💰 총 매출", f"{total_sales:,.0f} 원")
-    col2.metric("📱 토스 매출 (현장)", f"{toss_sales:,.0f} 원")
-    col3.metric("🌐 네이버 매출 (예약)", f"{naver_sales:,.0f} 원")
-
-    # 2행: 거래 분석 KPI
-    col4, col5, col6 = st.columns(3)
-    col4.metric("🧾 총 거래 건수", f"{transaction_count:,} 건")
-    col5.metric("💵 평균 객단가", f"{avg_transaction:,.0f} 원")
-    col6.metric("📊 플랫폼 비중", f"토스 {toss_ratio:.1f}% / 네이버 {naver_ratio:.1f}%")
+    # HTML/CSS 활용한 세련된 라운드드 박스 스타일 지표
+    html_metrics = f"""
+    <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">💰 총 매출</div>
+            <div style="font-size: 22px; font-weight: bold;">{total_sales:,.0f}원</div>
+        </div>
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">📱 토스 매출 (현장)</div>
+            <div style="font-size: 22px; font-weight: bold;">{toss_sales:,.0f}원</div>
+        </div>
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">🌐 네이버 매출 (예약)</div>
+            <div style="font-size: 22px; font-weight: bold;">{naver_sales:,.0f}원</div>
+        </div>
+    </div>
+    <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">🧾 총 거래 건수</div>
+            <div style="font-size: 20px; font-weight: bold;">{transaction_count:,}건</div>
+        </div>
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">💵 평균 객단가</div>
+            <div style="font-size: 20px; font-weight: bold;">{avg_transaction:,.0f}원</div>
+        </div>
+        <div style="flex: 1; min-width: 150px; padding: 15px; background-color: rgba(128,128,128,0.1); border-radius: 10px;">
+            <div style="font-size: 13px; color: gray; margin-bottom: 5px;">📊 플랫폼 비중</div>
+            <div style="font-size: 18px; font-weight: bold;">T: {toss_ratio:.1f}% / N: {naver_ratio:.1f}%</div>
+        </div>
+    </div>
+    """
+    st.markdown(html_metrics, unsafe_allow_html=True)
 
 def create_daily_sales_chart(df):
     """Creates a line chart for daily sales."""
