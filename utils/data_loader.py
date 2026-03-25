@@ -151,7 +151,9 @@ def normalize_columns(df, type_):
              else:
                  df['amount'] = pd.to_numeric(df['결제금액'], errors='coerce').fillna(0)
              
-             return df[['datetime', 'amount']]
+             order_col = next((c for c in df.columns if '주문번호' in c), None)
+             df['order_id'] = df[order_col].astype(str) if order_col else df.index.astype(str)
+             return df[['datetime', 'amount', 'order_id']]
 
         elif '결제일자' in df.columns and '결제시간' in df.columns:
             def combine_toss_datetime(row):
@@ -168,7 +170,9 @@ def normalize_columns(df, type_):
             else:
                  df['amount'] = pd.to_numeric(df['결제금액'], errors='coerce').fillna(0)
                  
-            return df[['datetime', 'amount']]
+            order_col = next((c for c in df.columns if '주문번호' in c), None)
+            df['order_id'] = df[order_col].astype(str) if order_col else df.index.astype(str)
+            return df[['datetime', 'amount', 'order_id']]
         
         else:
              found_cols = list(df.columns)
@@ -195,12 +199,15 @@ def normalize_columns(df, type_):
              df['datetime'] = df[date_col].apply(parse_korean_datetime)
              df['amount'] = pd.to_numeric(df[amt_col], errors='coerce').fillna(0)
              
+             order_col = next((c for c in df.columns if '예약번호' in c or '주문번호' in c), None)
+             df['order_id'] = df[order_col].astype(str) if order_col else df.index.astype(str)
+             
              refund_col = next((c for c in df.columns if '환불금액' in c), None)
              if refund_col:
                  refund = pd.to_numeric(df[refund_col], errors='coerce').fillna(0)
                  df['amount'] = df['amount'] - refund
                  
-             return df[['datetime', 'amount']]
+             return df[['datetime', 'amount', 'order_id']]
          else:
              raise ValueError(f"네이버 파일 형식 오류: 날짜/금액 컬럼을 찾을 수 없습니다. (발견된 컬럼: {list(df.columns)})")
 
@@ -283,3 +290,72 @@ def load_naver_data(file, password):
             
     df = normalize_columns(df, 'naver')
     return df
+
+def load_toss_discount_data(file, password):
+    """
+    Looks for Toss Product/Order detail sheet and extracts rows where category is '아이스크림' and discount > 0.
+    """
+    file.seek(0)
+    try:
+        decrypted_file = decrypt_excel(file, password)
+    except:
+        file.seek(0)
+    source_file = decrypted_file if decrypted_file else file
+
+    try:
+        sheets_dict = pd.read_excel(source_file, sheet_name=None, header=None)
+    except:
+        return pd.DataFrame()
+
+    target_sheet = None
+    for k in sheets_dict.keys():
+        if '상품' in str(k) or '주문' in str(k):
+             if '합계' not in str(k) and '요약' not in str(k) and str(k) not in ['결제 상세내역', '결제상세내역']:
+                 target_sheet = k
+                 break
+    
+    if not target_sheet:
+         return pd.DataFrame()
+         
+    df = sheets_dict[target_sheet]
+    
+    # Try finding the header
+    keywords = ['카테고리', '상품명'] # More permissive keywords
+    header_idx = find_header_row(df, keywords)
+    
+    if header_idx is not None and header_idx != -1:
+         new_header = df.iloc[header_idx]
+         df = df.iloc[header_idx + 1:]
+         df.columns = [str(c).replace(" ", "").replace("\n", "").strip() for c in new_header]
+         df = df.reset_index(drop=True)
+         
+         cat_col = next((c for c in df.columns if '카테고리' in c), None)
+         disc_amt_col = next((c for c in df.columns if '상품할인금액' in c), None)
+         if not disc_amt_col: disc_amt_col = next((c for c in df.columns if '할인금액' in c), None)
+         
+         disc_reason_col = next((c for c in df.columns if '상품할인' == c), None)
+         
+         if cat_col and disc_amt_col:
+              # 숫자 처리: "원", "," 기호 제거 후 형변환
+              # 예: "-3,000원", "3,000" -> -3000, 3000
+              df[disc_amt_col] = df[disc_amt_col].astype(str).str.replace(r'[원,]', '', regex=True)
+              df[disc_amt_col] = pd.to_numeric(df[disc_amt_col], errors='coerce').fillna(0)
+              
+              # 할인이 0이 아닌 경우 (마이너스 값으로 적히는 경우도 포함)
+              mask = (df[cat_col].astype(str).str.contains('아이스크림', na=False)) & (df[disc_amt_col] != 0)
+              
+              res_df = df[mask].copy()
+              
+              target_cols = ['결제일자', '결제시간', '결제시각', '영수증번호', cat_col, '상품명', '단가', '수량', disc_reason_col, disc_amt_col]
+              cols_to_keep = []
+              for target in target_cols:
+                  if target is None: continue
+                  for c in res_df.columns:
+                      if target in c and c not in cols_to_keep:
+                          cols_to_keep.append(c)
+              
+              if cols_to_keep:
+                  return res_df[cols_to_keep]
+              return res_df
+              
+    return pd.DataFrame()

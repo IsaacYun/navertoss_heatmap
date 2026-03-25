@@ -29,11 +29,12 @@ def process_and_merge_data(df_toss, df_naver):
     df_merged['day_of_week_int'] = df_merged['datetime'].dt.dayofweek
     df_merged['day_of_week'] = df_merged['day_of_week_int'].map(days)
     
-    # 30-min Intervals
-    # Floor to nearest 30 mins
-    df_merged['time_30min'] = df_merged['datetime'].dt.floor('30min').dt.time
-    # Create a string representation for sorting/plotting
-    df_merged['time_str'] = df_merged['datetime'].dt.floor('30min').dt.strftime('%H:%M')
+    # 30-min and 60-min Intervals
+    df_merged['time_30min'] = df_merged['datetime'].dt.floor('30min').dt.strftime('%H:%M')
+    df_merged['time_60min'] = df_merged['datetime'].dt.floor('60min').dt.strftime('%H:%M')
+    
+    # Default time_str
+    df_merged['time_str'] = df_merged['time_30min']
 
     # Sort
     df_merged = df_merged.sort_values('datetime')

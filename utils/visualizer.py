@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.express as px
+from streamlit_plotly_events import plotly_events
 import plotly.graph_objects as go
 import pandas as pd
 
@@ -37,14 +38,14 @@ def create_daily_sales_chart(df):
     
     fig = px.line(daily_sales, x='datetime', y='amount', 
                   title='Daily Sales Trend',
-                  labels={'amount': 'Sales (KRW)', 'datetime': 'Date'})
+                  labels={'amount': '매출 (원)', 'datetime': 'Date'})
     
     # Update y-axis to show full numbers with commas (no 'k')
     fig.update_yaxes(tickformat=",d")
     
     st.plotly_chart(fig, use_container_width=True)
 
-def create_heatmap(df):
+def create_heatmap(df, focus_day=None, focus_time=None):
     """Creates a heatmap for 30-min intervals."""
     # Ensure all days are present for correct sorting
     days_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -53,12 +54,12 @@ def create_heatmap(df):
     heatmap_data = df.groupby(['day_of_week', 'time_str'])['amount'].sum().reset_index()
     pivot_total = heatmap_data.pivot(index='day_of_week', columns='time_str', values='amount')
     pivot_total = pivot_total.reindex(days_order) # Ensure row order
-    
+
     # 2. Prepare Data for Average Sales
     # Calculate unique dates per day of week to get "N Mondays", "N Tuesdays" etc.
     df['date'] = df['datetime'].dt.date
     day_counts = df.groupby('day_of_week')['date'].nunique()
-    
+
     # Create a matching pivot table for Averages
     pivot_avg = pivot_total.copy()
     for day in days_order:
@@ -68,75 +69,263 @@ def create_heatmap(df):
                 pivot_avg.loc[day] = pivot_total.loc[day] / count
             else:
                 pivot_avg.loc[day] = 0
+
+    # 2b. Prepare Data for Median Sales (all dates x all time_strs)
+    all_dates = df['date'].unique()
+    all_times = df['time_str'].unique()
+    grid = pd.MultiIndex.from_product([all_dates, all_times], names=['date', 'time_str']).to_frame(index=False)
+    
+    daily_sum = df.groupby(['date', 'time_str'])['amount'].sum().reset_index()
+    full_daily = grid.merge(daily_sum, on=['date', 'time_str'], how='left').fillna({'amount': 0})
+    
+    # date -> day_of_week 매핑
+    date_to_dow = df[['date', 'day_of_week']].drop_duplicates()
+    full_daily = full_daily.merge(date_to_dow, on='date', how='left')
+
+    heatmap_median = full_daily.groupby(['day_of_week', 'time_str'])['amount'].median().reset_index()
+    pivot_median = heatmap_median.pivot(index='day_of_week', columns='time_str', values='amount')
+    pivot_median = pivot_median.reindex(days_order)
+    pivot_median = pivot_median.reindex(columns=pivot_total.columns)  # align columns
     
     # 3. Handle Zeros (Transparent) and NaNs
     pivot_total = pivot_total.replace(0, pd.NA)
     
     # 4. Create Custom Y-axis Labels with Stats (Days)
     day_totals = df.groupby('day_of_week')['amount'].sum()
+    # 일별 총매출의 중간값: 날짜별 합산 후 요일 그룹의 중간값
+    daily_by_day = df.groupby(['day_of_week', 'date'])['amount'].sum().reset_index()
+    day_medians = daily_by_day.groupby('day_of_week')['amount'].median()
     y_labels = []
     for day in pivot_total.index:
         if day in day_totals.index and day in day_counts.index:
             total = day_totals[day]
             count = day_counts[day]
             avg = total / count if count > 0 else 0
-            label = f"{day}<br><span style='font-size:10px'>(T:{total:,.0f}/A:{avg:,.0f})</span>"
+            med = day_medians.get(day, 0)
+            label = f"{day}<br><span style='font-size:10px'>(T:{total:,.0f}/A:{avg:,.0f}/M:{med:,.0f})</span>"
         else:
             label = day
         y_labels.append(label)
 
     # 5. Create Custom X-axis Labels with Stats (Times)
     time_totals = df.groupby('time_str')['amount'].sum()
+    # 전체 일자(full_daily) 기준 시간대별 중간값 계산 (매출 0원인 날 포함)
+    time_medians = full_daily.groupby('time_str')['amount'].median()
     # For time average: Total Sales at Time T / Total Unique Dates in dataset
-    total_days = df['date'].nunique()
-    
+    total_days = len(all_dates)
+
     x_labels = []
     for t in pivot_total.columns:
         if t in time_totals.index:
             total = time_totals[t]
             avg = total / total_days if total_days > 0 else 0
-            # Label format: "12:00 (T: ... / A: ...)" - Single line for better vertical rotation
-            label = f"{t} (T:{total:,.0f} / A:{avg:,.0f})"
+            med = time_medians[t]
+            # Label format: "12:00 (T:... / A:... / M:...)" - Single line for better vertical rotation
+            label = f"{t} (T:{total:,.0f} / A:{avg:,.0f} / M:{med:,.0f})"
         else:
             label = t
         x_labels.append(label)
 
-    # 6. Build Heatmap
+    # 6. Build Heatmap — stack avg + median as customdata
+    import numpy as np
+    # NaN → 0 으로 채워서 customdata 포맷 오류 방지
+    avg_vals = pivot_avg.fillna(0).values
+    med_vals = pivot_median.fillna(0).values
+    # customdata shape: (rows, cols, 2)  → [avg, median]
+    custom = np.stack([avg_vals, med_vals], axis=-1)
+
     fig = go.Figure(data=go.Heatmap(
         z=pivot_total.values,
-        x=x_labels, 
-        y=y_labels, 
-        customdata=pivot_avg.values, 
+        x=x_labels,
+        y=y_labels,
+        customdata=custom,
         colorscale='Greens',
-        xgap=1, 
+        xgap=1,
         ygap=1,
         hovertemplate=(
             "<b>%{y}</b><br>Time: %{x}<br><br>" +
-            "시간대 총 매출: %{z:,.0f} KRW<br>" +
-            "일평균 매출: %{customdata:,.0f} KRW<br>" +
+            "시간대 총 매출: %{z:,.0f} 원<br>" +
+            "일평균 매출: %{customdata[0]:,.0f} 원<br>" +
+            "중간값:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; %{customdata[1]:,.0f} 원<br>" +
             "<extra></extra>"
-        )
+        ),
+        hoverongaps=False,
     ))
 
     fig.update_layout(
-        title="Sales Heatmap (30-min intervals)",
         xaxis_side="top",
-        height=700, # Increase height to accommodate labels
-        margin=dict(t=160, b=50, l=50, r=50), # Add generous top margin for labels + title
+        height=700,
+        margin=dict(t=300, b=50, l=50, r=50),
         xaxis=dict(
-            tickangle=-90, # Rotate text vertically
-            tickfont=dict(size=10)
+            tickangle=-90,
+            tickfont=dict(size=10),
+            fixedrange=True,   # 줌/패닝 비활성화
+        ),
+        yaxis=dict(
+            fixedrange=True,   # 줌/패닝 비활성화
         ),
         coloraxis_colorbar=dict(
-            title="Sales (KRW)",
+            title="매출 (원)",
             tickformat=",d"
-        )
+        ),
+        dragmode=False,        # 드래그로 줌 선택 비활성화
     )
-    
+
     # Update colorbar format manually since we are using go.Heatmap not px
     fig.update_traces(colorbar_tickformat=",d")
 
-    st.plotly_chart(fig, use_container_width=True)
+    # 포커스된 셀이 있다면 빨간색 테두리를 그립니다.
+    if focus_day and focus_time:
+        # y_labels 중 focus_day로 시작하는 것 찾기 (예: 'Mon'으로 시작하는 라벨)
+        y_idx = next((i for i, l in enumerate(y_labels) if l.startswith(focus_day)), None)
+        # x_labels 중 focus_time으로 시작하는 것 찾기 (예: '12:00'로 시작하는 라벨)
+        x_idx = next((i for i, l in enumerate(x_labels) if str(l).startswith(focus_time)), None)
+        
+        if y_idx is not None and x_idx is not None:
+            fig.add_shape(
+                type="rect",
+                x0=x_idx - 0.5,
+                x1=x_idx + 0.5,
+                y0=y_idx - 0.5,
+                y1=y_idx + 0.5,
+                line={"color": "red", "width": 3},
+                fillcolor="rgba(0,0,0,0)",
+                layer="above"
+            )
+
+    # plotly_events로 클릭 이벤트 감지
+    clicked = plotly_events(
+        fig,
+        click_event=True,
+        hover_event=False,
+        select_event=False,
+        override_width="100%",
+        override_height=720,
+        key="heatmap_click",
+    )
+
+    # 클릭 된 셀 디코딩
+    selected_day, selected_time = None, None
+    if clicked:
+        pt = clicked[0]
+        raw_y = str(pt.get("y", ""))
+        raw_x = str(pt.get("x", ""))
+        # y_label: "Mon<br><span style='font-size:10px'>..." → "Mon"
+        selected_day = raw_y.split("<")[0].strip()
+        # x_label: "12:00 (T:... / A:... / M:...)" → "12:00"
+        selected_time = raw_x.split(" ")[0].strip()
+
+    return selected_day, selected_time
+
+
+def create_heatmap_drilldown(df, selected_day, selected_time):
+    """Drilldown: 선택된 (요일 x 30분 시간대)의 일별 매출 바 차트"""
+    days_korean = {'Mon': '월', 'Tue': '화', 'Wed': '수', 'Thu': '목', 'Fri': '금', 'Sat': '토', 'Sun': '일'}
+    day_kr = days_korean.get(selected_day, selected_day)
+
+    st.markdown(f"#### 📍 `{day_kr}요일 {selected_time}` 시간대 — 일별 매출")
+
+    mask = (df['day_of_week'] == selected_day) & (df['time_str'] == selected_time)
+    df_cell = df[mask].copy()
+
+    # 전체 데이터에서 해당 요일에 속하는 모든 날짜 리스트 확보
+    all_dates_for_day = df[df['day_of_week'] == selected_day]['date'].unique()
+
+    if len(all_dates_for_day) == 0:
+        st.info("해당 기간 내에 이 요일의 데이터가 존재하지 않습니다.")
+        return
+
+    # 해당 셀(시간대)의 일별 매출 합산
+    daily = df_cell.groupby('date')['amount'].sum().reset_index()
+
+    # 모든 해당 요일의 날짜와 병합하여 매출이 없는 날은 0으로 처리
+    all_dates_df = pd.DataFrame({'date': all_dates_for_day})
+    daily = all_dates_df.merge(daily, on='date', how='left').fillna({'amount': 0}).sort_values('date')
+    daily['date_str'] = daily['date'].astype(str)
+
+    # 요약 지표 (st.metric 대신 작게 표시하여 좁은 공간에서도 깨짐 방지)
+    total = daily['amount'].sum()
+    avg   = daily['amount'].mean()
+    med   = daily['amount'].median()
+    
+    html_metrics = f"""
+    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+        <div style="flex: 1; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 8px;">
+            <div style="font-size: 12px; color: gray;">합계</div>
+            <div style="font-size: 16px; font-weight: bold;">{total:,.0f}원</div>
+        </div>
+        <div style="flex: 1; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 8px;">
+            <div style="font-size: 12px; color: gray;">평균</div>
+            <div style="font-size: 16px; font-weight: bold;">{avg:,.0f}원</div>
+        </div>
+        <div style="flex: 1; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 8px;">
+            <div style="font-size: 12px; color: gray;">중간값</div>
+            <div style="font-size: 16px; font-weight: bold;">{med:,.0f}원</div>
+        </div>
+    </div>
+    """
+    st.markdown(html_metrics, unsafe_allow_html=True)
+
+    fig = px.bar(
+        daily,
+        x='date_str',
+        y='amount',
+        text='amount',
+        labels={'date_str': '날짜', 'amount': '매출 (원)'},
+        title=f"{day_kr}요일 {selected_time} 시간대 일별 매출",
+        color_discrete_sequence=['#4CAF50']
+    )
+    fig.update_traces(
+        texttemplate='%{text:,.0f}',
+        textposition='outside',
+        cliponaxis=False
+    )
+    # y축 상단에 여백을 조금 더 줍니다 (텍스트 잘림 방지)
+    fig.update_yaxes(tickformat=",d", fixedrange=True, rangemode='tozero', range=[0, daily['amount'].max() * 1.25] if daily['amount'].max() > 0 else [0, 1])
+    fig.update_xaxes(type='category', tickangle=-45, fixedrange=True)  # 연속된 날짜 공백 방지
+    fig.update_layout(showlegend=False, margin=dict(t=80, b=80), dragmode=False, height=350)
+    
+    st.caption("👉 막대를 클릭하면 개별 거래내역(시간/분)이 하단에 표시됩니다.")
+
+    clicked = plotly_events(
+        fig,
+        click_event=True,
+        hover_event=False,
+        select_event=False,
+        override_width="100%",
+        override_height=300,
+        key=f"drilldown_click_{selected_day}_{selected_time}"
+    )
+
+    if clicked:
+        selected_date = str(clicked[0].get("x"))
+        st.markdown(f"##### 🕒 {selected_date} 개별 거래 내역")
+        
+        mask_date = df_cell['date'].astype(str) == selected_date
+        detail_df = df_cell[mask_date].copy()
+        
+        if not detail_df.empty:
+            if 'order_id' in detail_df.columns:
+                # 토스와 네이버의 주문번호가 우연히 겹치는 것을 방지
+                detail_df['uid'] = detail_df['source'] + "_" + detail_df['order_id'].astype(str)
+                grouped = detail_df.groupby('uid', as_index=False).agg({
+                    'datetime': 'first',
+                    'source': 'first',
+                    'amount': 'sum'
+                })
+                detail_df = grouped
+                
+            detail_df = detail_df.sort_values('datetime')
+            detail_df['time_display'] = detail_df['datetime'].dt.strftime('%H:%M:%S')
+            detail_df['amount_display'] = detail_df['amount'].apply(lambda x: f"{x:,.0f}원")
+            show_df = detail_df[['time_display', 'source', 'amount_display']].rename(columns={
+                'time_display': '결제 시간',
+                'source': '출처 (결제수단)',
+                'amount_display': '합계 금액'
+            })
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("결제(매출) 내역이 없습니다. (0원)")
 
 
 def create_peak_hours_analysis(df):
